@@ -57,14 +57,12 @@ run_command 裡的指令就是 UBOOT SHELL 的指令，也可以去改 setenv + 
 CONFIG_BOOTCOMMAND="tftpboot 0x80000000 firmware.img; \
 # 定義 U‑Boot 開機後要自動執行的指令序列。這會成為環境變數 bootcmd 的預設值。
 # 為從 TFTP server 下載檔案 firmware.img，放到 RAM 位址 0x80000000。
-                    mmc dev 0; \
-# 選擇 eMMC 裝置編號 0，準備操作。
-                    mmc erase 0x1000 0x8000; \
-# 擦除 eMMC 上從位址 0x1000 開始、長度 0x8000 的區塊。這裡代表要清掉舊韌體所在的分區。
-                    mmc write 0x80000000 0x1000 0x8000; \
-# 把剛剛下載到 RAM 的映像檔，寫入到 eMMC 的分區（起始位址 0x1000，大小 0x8000）。
+                    sf probe 0; \  #偵測 SPI flash（裝置編號 0）
+                    sf erase 0x1000 0x8000; \
+# 擦除 flash 上從 0x1000 開始、長度 0x8000 的區塊
+                    sf write 0x80000000 0x1000 0x8000; \
+# 將 RAM 內的映像檔寫入 flash
                     reset"
-# 完成更新後，重啟系統，讓新韌體生效。
 ```
 #### 1. 設定分區
 這邊採用直接改 C 語言的作法
@@ -132,10 +130,61 @@ U_BOOT_CMD(
 ```
 bspatch old-u-boot.bin new-u-boot.bin uboot.diff
 ```
-會去比較新舊 BIN 檔然後生成 uboot.diff 這個更新包，接著在 uboot 輸入已下指令就可以更新了
+會去比較新舊 BIN 檔然後生成 uboot.diff 這個更新包，然後把更新包傳到 device 上，接著把目前啟動分區的寫成一個映像檔，然後用以下指令把更新檔與舊映像檔合成成一個新的映像檔
+```
+sf read 0x81000000 ${bootA_start} ${bootA_size} # 把目前啟動分區的寫成一個映像檔
+run apply_patch 0x81000000 0x80000000 0x82000000 
+```
+其中的 apply_patch 需要自己實作，但可用 [bsdiff](https://github.com/mendsley/bsdiff) 裡面的 bspatch 直接放在 main 函數中。最後再把生成的新映像檔寫進備份分區且改為啟動分區，然後把目前的啟動分區改為非啟動區，然後重啟即完成整個流程。
 ```
 sf probe 0
-sf erase <B分區offset> <size>
-sf write <RAM地址> <B分區offset> <size>
+sf erase ${bootB_start} ${bootB_size}
+sf write 0x82000000 ${bootB_start} ${bootB_size}
+setenv boot_partition bootB
+saveenv
+reset
 ```
-當更新包下載到 device 後，會利用啟動分區的檔案與更新包，生成一個新的安裝包，然後再依照整包更新的流程去做，所以其他流程都與前面無異。
+最後的 C 語言版本如下
+```C
+#include <stdint.h>
+#include <stdio.h>
+#include "bspatch.h"           // 你移植的 bspatch 標頭檔
+#include "spi_flash_driver.h"  // 你自己的 SPI Flash 讀寫驅動
+
+#define OLD_FW_ADDR   0x00000000  // 舊分區起始位址
+#define OLD_FW_SIZE   0x00100000  // 舊分區大小（1MB）
+#define PATCH_ADDR    0x00200000  // 差分包存放位址
+#define PATCH_SIZE    0x00010000  // 差分包大小（64KB）
+#define NEW_FW_ADDR   0x00100000  // 新分區起始位址
+#define NEW_FW_SIZE   0x00100000  // 新分區大小（1MB）
+
+uint8_t old_fw[OLD_FW_SIZE];
+uint8_t patch[PATCH_SIZE];
+uint8_t new_fw[NEW_FW_SIZE];
+
+int main(void) {
+    int ret;
+    spi_flash_read(OLD_FW_ADDR, old_fw, OLD_FW_SIZE); // 1. 讀取舊韌體
+    spi_flash_read(PATCH_ADDR, patch, PATCH_SIZE);    // 2. 讀取差分包
+    // 3. 使用 bspatch 合成新韌體
+    // 假設你已經有一個 bspatch_buffer 版本的 API
+    ret = bspatch_buffer(old_fw, OLD_FW_SIZE, patch, PATCH_SIZE, new_fw, NEW_FW_SIZE);
+    if (ret != 0) {
+        printf("差分還原失敗！\n");
+        return -1;
+    }
+    spi_flash_erase(NEW_FW_ADDR, NEW_FW_SIZE);         // 4. 擦除新分區
+    spi_flash_write(NEW_FW_ADDR, new_fw, NEW_FW_SIZE); // 5. 寫進新分區
+
+    // 6. 校驗（可選，建議做 CRC32 或 MD5）
+    if (!verify_flash(NEW_FW_ADDR, new_fw, NEW_FW_SIZE)) {
+        printf("寫入校驗失敗！\n");
+        return -2;
+    }
+    printf("差分升級成功！\n");
+    set_boot_partition(NEW_FW_ADDR);
+    mcu_reset();
+    return 0;
+}
+```
+```
