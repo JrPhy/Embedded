@@ -35,8 +35,8 @@ OTA 是透過網路/藍芽/ZigBee/NFC 等通訊協定，把檔案傳到機台上
 ## 二、IAP 流程
 雖然 IAP 的優勢就是不用分區，但因為現在都是混用設計居多，所以 IAP 也會同 OTA 一樣做分區設計，否則要更新就都需要插線，例如 USB 或是其他 UART/SPI 等，後者就是使用 SD Card 之類的，其餘的步驟都跟 OTA 一樣。
 
-## 三、更新流程
-而在開機過程中，BOOTLOADER 預設是進入系統的，所以做更新時必須要把 FLAG 設置成更新，在 u-boot 中可以在 ```u-boot/common/main.c``` 加入 flag 去判斷，這是一般釋出給客戶的做法，因為編譯後客戶就無法去改動。
+## 三、整包更新流程
+而在開機過程中，BOOTLOADER 預設是進入系統的，所以做更新時必須要把 FLAG 設置成更新，在 u-boot 中可以在 ```u-boot/common/main.c``` 加入 flag 去判斷，這是一般釋出給客戶的做法，因為編譯後客戶就無法去改動，這邊用完整更新為例，也就是下載整包印象檔去刷新。
 ```C++
 void main_loop(void) {
     ...
@@ -127,3 +127,15 @@ U_BOOT_CMD(
     "size: 映像大小"
 );
 ```
+## 四、僅更新包流程
+生成更新包時可以使用 [bsdiff](https://github.com/mendsley/bsdiff) 這套工具，安裝後輸入已下指令就會產生更新包
+```
+bspatch old-u-boot.bin new-u-boot.bin uboot.diff
+```
+會去比較新舊 BIN 檔然後生成 uboot.diff 這個更新包，接著在 uboot 輸入已下指令就可以更新了
+```
+sf probe 0
+sf erase <B分區offset> <size>
+sf write <RAM地址> <B分區offset> <size>
+```
+當更新包下載到 device 後，會利用啟動分區的檔案與更新包，生成一個新的安裝包，然後再依照整包更新的流程去做，所以其他流程都與前面無異。
