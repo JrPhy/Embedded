@@ -6,10 +6,8 @@
 int main(void) {
     //...
     IWDG_Config(IWDG_Prescaler_64 ,625);
-    while(1)                            
-    {	   
-        if( Key_Scan(KEY1_GPIO_PORT,KEY1_PIN) == KEY_ON)
-        {
+    while(1) {	   
+        if(Key_Scan(KEY1_GPIO_PORT,KEY1_PIN) == KEY_ON) {
             // ...
             IWDG_Feed();		
             // 餵狗後亮綠燈，若沒餵狗則會在時間到後再跳回上面
@@ -23,17 +21,15 @@ int main(void) {
 不同於獨立看門狗，窗口看門狗使用系統時鐘，精確度較於獨立看門狗高。一般用來監測外部干擾或不可預見的邏輯條件，造成的應用程式背離正常的運行序列而產生的軟體故障。窗口的意思是說當時間介於某個區間內餵狗表示正常，反之則不正常會回到迴圈一開始。下限通常設為 0x40，上限則根據實際情況設置，窗口介於 0x7F~0x40 間。
 ![image](https://github.com/user-attachments/assets/d70c6c65-824f-4576-99b2-1154d7f7a3d5)\
 ```C
-int main(void)
-{
+int main(void) {
     //...
     WWDG_Config(127,80,WWDG_Prescaler_8); // 初始化WWDG
     wwdg_wr = WWDG->CFR & 0X7F;
     //視窗值我們在初始化的時候設置成0x5F，這個值不會改變
-    while(1)
-    {
+    while(1) {
         LED2(OFF);
         wwdg_tr = WWDG->CR & 0X7F;
-        if( wwdg_tr < wwdg_wr )
+        if(wwdg_tr < wwdg_wr)
             WWDG_Feed(); // 餵狗，重新設置計數器的值為最大0X7F
 	}
 }
