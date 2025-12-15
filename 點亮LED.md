@@ -12,7 +12,10 @@ void main(void) {
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;//设置频率为50HZ
     GPIO_Init(LED_G_PORT,  &GPIO_InitStruct);//GPIO初始化
     while (1) {
-        GPIO_SetBits(GPIOB, GPIO_Pin_1);
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   // 點亮 LED
+        HAL_Delay(1000);                                      // 延遲 1 秒
+        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); // 熄滅 LED
+        HAL_Delay(1000);                                      // 延遲 1 秒
     }
 }
 ```
@@ -21,9 +24,25 @@ void main(void) {
 8051 的每個 port 都是預設高電位，所以只要將連接的 port 拉低電位即可點亮
 ```C
 #include <reg51.h>
-void main(void) {
-    while (1) {
-        P1^1 = 1; // 輸出低電位
+sbit LED = P1^0; // 定義 LED 連接到 P1.0
+void main() {
+    while(1) {
+        LED = 1; // 點亮 LED
+        delay(1000);
+        LED = 0; // 熄滅 LED
+        delay(1000);
     }
+}
+
+```
+
+## 3. 裸機
+```C
+#define LED_PIN  (1 << 5) // 假設 LED 接在第 5 腳
+void led_on() {
+    GPIO_PORT |= LED_PIN; // 點亮 LED
+}
+void led_off() {
+    GPIO_PORT &= ~LED_PIN; // 熄滅 LED
 }
 ```
