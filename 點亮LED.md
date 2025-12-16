@@ -39,10 +39,6 @@ void main() {
 ## 3. 裸機
 ```C
 #define LED_PIN  (1 << 5) // 假設 LED 接在第 5 腳
-void led_on() {
-    GPIO_PORT |= LED_PIN; // 點亮 LED
-}
-void led_off() {
-    GPIO_PORT &= ~LED_PIN; // 熄滅 LED
-}
+void led_on() { GPIO_PORT |= LED_PIN;}
+void led_off() {GPIO_PORT &= ~LED_PIN;}
 ```
