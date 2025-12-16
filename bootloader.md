@@ -33,15 +33,12 @@
 
 其中的 board 資料夾為一些廠家提供的 uboot，詳細可參考[這篇文章](https://blog.csdn.net/qq_52479948/article/details/128900841)。
 
-
-
-
 ## 四、第一階段 SPL
 BootROM (SoC 內建) 上電後 CPU 從 Reset Vector 開始執行，通常是晶片廠商提供的 BootROM。它的任務是把 SPL 載入到片上 SRAM。
 
 SPL 程式碼就在 U‑Boot 原始碼裡的 spl/ 框架，以及 arch/ 和 board/ 目錄下的 SPL 專用程式。會去初始化最基本的硬體 (時鐘、PLL、堆疊)，然後從啟動裝置 (NAND、SD、SPI Flash 等) 載入完整的 U‑Boot proper，再跳轉到第二階段入口 (_start)。
 
-## 第二階段
+## 五、第二階段
 #### 1. _start
 u-boot.lds 中的 ENTRY(_start) 就是 U-boot 的進入點，其中 ARMv7 _start 放在 ```u-boot/arch/arm/lib/vectors.S``` 或是在每個 ```cpu/start.S``` 中，ARMv8 則是統一在 start.S 中，裡面可看到一開始先做了 reset，之後就到 ```.globl _start```，裡面的 ```.section ".vectors", "ax"```．\
 .section: 將接下來的程式碼或資料放入後面得變數中\
@@ -59,3 +56,4 @@ u-boot.lds 中的 ENTRY(_start) 就是 U-boot 的進入點，其中 ARMv7 _start
 #### 4. main_loop()
 這步就是真正的 main 函數了，會去處理 boot script 或啟動 kernel
 
+### 六、移植
