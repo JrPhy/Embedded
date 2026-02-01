@@ -1,0 +1,1 @@
+STM32F249I-DISC1 使用 cubeMX 做開發
