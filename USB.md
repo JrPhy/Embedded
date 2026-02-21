@@ -14,7 +14,7 @@ Type C 主要靠腳位來同時支援 USB 2.0 與 USB 3.0，所以 3.0 更像是
 ## 二、USB 列舉
 現在 USB 設備大多是隨插即用的，這與 USB 的協定有關。如果 TYPE C 中有 D+/D- 引腳，插入後就會被電腦偵測到。在 Windows/Linux/Mac 中都有個 USB Controller，OS 會一直去輪循每個 port 看看是否有新設備插入，每次間隔約 125 us，且只能由 OS 向設備發起詢問(除了喚醒外)。辨認設備主要靠**標示符**來辨認，每個 USB 設備中都包含一組標示符給電腦辨認
 ```C
-#PRAGMA PACK(1)
+#pragma pack(push, 1)
 struct _DEVICE_DESCRIPTOR_STRUCT { 
     BYTE bLength;           //設備描述符的字節數大小，為0x12 
     BYTE bDescriptorType;   //描述符類型編號，為0x01 
@@ -32,6 +32,6 @@ struct _DEVICE_DESCRIPTOR_STRUCT {
     BYTE iSerialNumber;     //描述設備序列號字符串的索引 
     BYTE bNumConfiguration; //可能的配置數量 
 }
-#PRAGMA PACK()
+#pragma pack(pop)
 ```
 宣告此結構體時建議告訴編譯器不要對齊，否則在讀取描述符時容易錯誤。
