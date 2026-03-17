@@ -1,4 +1,4 @@
-STM32F249I-DISC1 使用 cubeMX 做開發，官方註冊後登入即可下載。之後可去左上角 File -> New -> STM32 Project 新增專案\
+STM32F429I-DISC1 使用 cubeMX 做開發，官方註冊後登入即可下載。之後可去左上角 File -> New -> STM32 Project 新增專案\
 ![img](New_project.png)\
 再到 Board selector 選擇板子輸入板子號就可以去選擇板子，這邊進入可會幫你做外設電路初始化，生成出來的專案也會有 .ioc 檔，可以在這邊對電路做更詳細的設定。\
 ![img](Board_selector.png)\
