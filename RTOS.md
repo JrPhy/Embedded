@@ -48,7 +48,23 @@ const osThreadAttr_t attributes = {
 osThreadId_t id = osThreadNew(MyTask, NULL, &attributes);
 ```
 ```osThreadId_t osThreadNew (osThreadFunc_t func, void *argument, const osThreadAttr_t *attr)```
-第一個就是把任務傳入，第二個則是要傳入該任務的變數，沒有就放 ```NULL```，第三個則是放任務的資訊，如名稱、需要的記憶體與優先及，就是對應到 xCreate 的 API。
+第一個就是把任務傳入，第二個則是要傳入該任務的變數，沒有就放 ```NULL```，第三個則是放任務的資訊，如名稱、需要的記憶體與優先及，就是對應到 xCreate 的 API。而在 main 函數中會有
+```c
+int main(void) {
+    // CUBEIDE 會自動生成
+    HAL_Init();
+    // 初始化 RTOS
+    osKernelInitialize();
+    // 定義任務名稱、優先級、實例數、堆疊大小
+    osThreadDef(uartTask, StartUartTask, osPriorityNormal, 0, 128);
+    uartTaskHandle = osThreadCreate(osThread(uartTask), NULL);
+    // [5] 啟動內核調度器 (啟動後不再返回)
+    osKernelStart();
+    // 正常不會到這裡
+    while (1) {}
+}
+```
+這樣就完成了 RTOS 的任務創建。
 
 #### 2. 任務切換
 Process、Thread 與 Task 在切換時都會需要存下 Control Block 的資訊，只是裡面所需的內容不同而已，Task 因為都在同一塊記憶體中所以會更輕量。FreeRTOS TCB 存儲了以下成員
@@ -67,6 +83,72 @@ PendSV interrupt 的優先級也必須是 15 (最低)。
 Middleware -> FREERTOS:
 確保 USE_PREEMPTION (開啟搶佔) 設為 Enabled。
 ```
-如果遇到相同優先序的任務，則會每隔一小段時間就切換到另個任務，會使得 CPU 資源耗費許多在任務切換上，所以會盡量把優先及分開，且越高的 osDelay 時間要越短。
+如果遇到相同優先序的任務，則會每隔一小段時間就切換到另個任務，會使得 CPU 資源耗費許多在任務切換上，所以會盡量把優先及分開，且越高的 osDelay 時間要越短。不過若要避免這種情況發生，例如兩任務有優先順序時就可以用 Queue 隊列。
 
-## 二、二元信號量 (Binary Semaphore)
+## 二、[隊列 (Queue) ](https://github.com/JrPhy/DS-AL/blob/master/Stack_and_Queue/Queue-%E4%BD%87%E5%88%97.md)
+為一種先進先出的資料結構，FreeRTOS 中隊列與信號都是**事件**，也就是有接收到訊號時才會去執行該任務，而 osDelay 是輪詢，在固定的時間去執行，若要傳資料且資料會一筆一筆處理、或是兩個任務有順序性，如收集數據在處理數據就可以用 Queue。
+```
+#include "main.h"
+#include "cmsis_os.h"
+
+osMessageQDef(sensorQueue, 8, uint32_t);
+osMessageQId sensorQueueHandle;
+
+osThreadId sensorTaskHandle;
+osThreadId controlTaskHandle;
+
+void SensorTask(void const *argument);
+void ControlTask(void const *argument);
+
+int main(void) {
+    HAL_Init();
+    SystemClock_Config();
+    /* 如果有 GPIO / ADC / I2C 初始化，放這裡 */
+    MX_GPIO_Init();
+    /* 建立 Queue（這裡才真的產生 Queue） */
+    sensorQueueHandle = osMessageCreate(
+        osMessageQ(sensorQueue),
+        NULL
+    );
+
+    /* 建立 Sensor Task */
+    osThreadDef(sensorTask, SensorTask, osPriorityNormal, 0, 128);
+    sensorTaskHandle = osThreadCreate(osThread(sensorTask), NULL);
+
+    /* 建立 Control Task */
+    osThreadDef(controlTask, ControlTask, osPriorityAboveNormal, 0, 128);
+    controlTaskHandle = osThreadCreate(osThread(controlTask), NULL);
+
+    osKernelStart();
+
+    /* 理論上不會跑到這裡 */
+    while (1) {}
+}
+
+void SensorTask(void const *argument) {
+    uint32_t temperature;
+    for (;;) {
+        temperature = Read_Sensor();  // 例如 ADC/I2C
+        osMessagePut(sensorQueueHandle, temperature, 0);
+        osDelay(100);
+    }
+}
+
+void ControlTask(void const *argument) {
+    osEvent evt;
+    uint32_t temp;
+
+    for (;;) {
+        /* 等待 Queue 裡有資料 */
+        evt = osMessageGet(sensorQueueHandle, osWaitForever);
+        if (evt.status == osEventMessage) {
+            temp = evt.value.v;
+            if (temp > 50) Turn_On_Fan();
+            else Turn_Off_Fan();
+        }
+    }
+}
+```
+在最一開始的 ```osMessageQDef(sensorQueue, 8, uint32_t);``` 定義了隊列的資料結構，sensorQueue 可以當成這個隊列的名稱，大小為 8，也就是最多只有 8 個任務可以等待，超過就看是要阻塞還是要放棄，要傳遞的資料是 uint32_t，剩下的步驟就類似創建任務。在任務函數中，```osMessagePut``` 就是把資料放入，```osMessageGet``` 則是把資料取出。
+
+## 三、信號量 (Semaphore)
