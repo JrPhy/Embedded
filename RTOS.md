@@ -7,5 +7,66 @@
 | ThreadX | MIT | 約 2 KB | 安全認證齊全 |
 | VxWorks | 閉源商用 | 較大 | 工業標竿 |
 
-## 一、與一般 OS 不同處
-相較於一般的 OS，RTOS 通常是跑單核心，以任務(Task)為單位執行，所有 Task 共享同一個位址空間，所以在 [Context Switch](https://github.com/JrPhy/Multiple_Thread/blob/main/%E4%B8%8A%E4%B8%8B%E6%96%87%E4%BA%A4%E6%8F%9B%E8%88%87%E5%8E%9F%E5%AD%90%E6%93%8D%E4%BD%9C.md) 也會更輕量更快。
+在此已 FREERTOS 為主，因為業界使用較多且主要的 API 都已經寫好，只要去呼叫即可。裡面的文件與用途有以下
+```
+port.c : 針對不同硬件平台的接口
+heap_4.c : 內存管理相關
+croutine.c : 協程相關
+event_groups.c : 事件標志組相關
+list.c : 列表，FreeRTOS的一種基礎數據結構
+queue.c : 隊列相關
+tasks.c : 任務創建、掛起、恢覆、調度相關
+timers.c : 軟件定時器相關
+```
+
+## 一、任務
+相較於一般的 OS，RTOS 通常是跑單核心，以任務(Task)為單位執行，可以看成只在上面執行一個主程式，裡面的任務看作是這程式的執行緒，所有 Task 共享同一個位址空間，所以在 [Context Switch](https://github.com/JrPhy/Multiple_Thread/blob/main/%E4%B8%8A%E4%B8%8B%E6%96%87%E4%BA%A4%E6%8F%9B%E8%88%87%E5%8E%9F%E5%AD%90%E6%93%8D%E4%BD%9C.md) 也會更輕量更快。狀態有以下幾種
+![IMG](https://freertos.org/media/2018/tskstate.gif)
+[SOURCE](https://freertos.org/zh-cn-cmn-s/Documentation/02-Kernel/02-Kernel-features/01-Tasks-and-co-routines/02-Task-states)
+#### 1. 任務創建
+如同單晶片上的主程式，每個任務裏面也會有一個無窮迴圈，主要邏輯放在無窮回圈內並放 osDelay、osDelayUntil、Semaphore 或 Queue 來讓低優先級的任務執行，初始化的邏輯放在無窮迴圈外面，
+```C
+void MyTask(void *argument) {
+    // 初始化邏輯
+    for(;;) {
+        // 主要邏輯
+        /* 3. 延遲 (必備！否則低優先權任務會餓死) */
+        osDelay(10); 
+    }
+}
+```
+如果是最低優先權的任務也要有 osDelay(0)，這樣才會主動讓出 CPU，且任務被刪除時才會回收記憶體。在原生的 FreeRTOS 中使用 xTaskCreate 來建立，而 CUBEIDE 中的 FreeRTOS 則有另一個封裝，是 ARM 推出的通用標準 (CMSIS)，這邊也用後者，其寫法樣板如下
+```C
+#include "cmsis_os.h"
+...
+const osThreadAttr_t attributes = {
+  .name = "MyTask",
+  .stack_size = 1024,   // Stack 大小 (Bytes)
+  .priority = (osPriority_t) osPriorityNormal, 
+};
+
+osThreadId_t id = osThreadNew(MyTask, NULL, &attributes);
+```
+```osThreadId_t osThreadNew (osThreadFunc_t func, void *argument, const osThreadAttr_t *attr)```
+第一個就是把任務傳入，第二個則是要傳入該任務的變數，沒有就放 ```NULL```，第三個則是放任務的資訊，如名稱、需要的記憶體與優先及，就是對應到 xCreate 的 API。
+
+#### 2. 任務切換
+Process、Thread 與 Task 在切換時都會需要存下 Control Block 的資訊，只是裡面所需的內容不同而已，Task 因為都在同一塊記憶體中所以會更輕量。FreeRTOS TCB 存儲了以下成員
+```
+pxTopOfStack：指向任務棧頂，這裡存著 R0-R15、xPSR。
+xStateListItem：讓排程器知道這個任務是在 Ready 還是 Blocked 隊列。
+uxPriority：決定誰能「搶佔」CPU 的關鍵。
+pxStack：指針，用來偵測 Stack Overflow。
+```
+當然 FreeRTOS 在底層都已經做掉了，只需在 CUBEIDE 中做以下設定
+```
+System Core -> NVIC:
+Time base: System tick timer 的優先級通常設為 15 (最低)。
+PendSV interrupt 的優先級也必須是 15 (最低)。
+
+Middleware -> FREERTOS:
+確保 USE_PREEMPTION (開啟搶佔) 設為 Enabled。
+```
+如果遇到相同優先序的任務，則會每隔一小段時間就切換到另個任務，會使得 CPU 資源耗費許多在任務切換上，所以會盡量把優先及分開，且越高的 osDelay 時間要越短。
+
+## 二、二元信號量 (Binary Semaphore)
