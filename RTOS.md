@@ -87,7 +87,7 @@ Middleware -> FREERTOS:
 
 ## 二、[隊列 (Queue) ](https://github.com/JrPhy/DS-AL/blob/master/Stack_and_Queue/Queue-%E4%BD%87%E5%88%97.md)
 為一種先進先出的資料結構，FreeRTOS 中隊列與信號都是**事件**，也就是有接收到訊號時才會去執行該任務，而 osDelay 是輪詢，在固定的時間去執行，若要傳資料且資料會一筆一筆處理、或是兩個任務有順序性，如收集數據在處理數據就可以用 Queue。
-```
+```C
 #include "main.h"
 #include "cmsis_os.h"
 
@@ -151,4 +151,38 @@ void ControlTask(void const *argument) {
 ```
 在最一開始的 ```osMessageQDef(sensorQueue, 8, uint32_t);``` 定義了隊列的資料結構，sensorQueue 可以當成這個隊列的名稱，大小為 8，也就是最多只有 8 個任務可以等待，超過就看是要阻塞還是要放棄，要傳遞的資料是 uint32_t，剩下的步驟就類似創建任務。在任務函數中，```osMessagePut``` 就是把資料放入，```osMessageGet``` 則是把資料取出。
 
-## 三、信號量 (Semaphore)
+## 三、多條件同步
+在有些時候我們會希望整個系統與傳感器都連接上後再開始執行某個任務，就可以使用 ```EventFlags``` 來等待多個事件達到條件後再往執行。在上述例子中加入下方的程式碼後就可以得到通知。
+```C
+#include "cmsis_os2.h"
+#define EVT_INIT_OK     (1U << 0)
+#define EVT_INIT_FAIL   (1U << 1)
+osEventFlagsId_t systemEvents;
+// ...
+int main() {
+    // ...
+    systemEvents = osEventFlagsNew(NULL);
+    // ...
+    while (1) {}
+}
+
+void SensorTask(void *argument) {
+    // 初始化完成後通知系統
+    osEventFlagsSet(systemEvents, EVT_SENSOR_READY);
+    // ...
+}
+
+void ControlTask(void *argument) {
+    // 等待條件成立
+    osEventFlagsWait(
+        systemEvents,
+        EVT_SENSOR_READY | EVT_SYSTEM_READY,  // 兩個條件
+        osFlagsWaitAll,                       // AND（全部要成立）
+        osWaitForever
+    );
+    // ...
+}
+```
+當然有多個感測器就會有更複雜的寫法，所以就可以用 Event 來告訴我們哪些成功哪些失敗。
+
+## 四、信號量 (Semaphore)
