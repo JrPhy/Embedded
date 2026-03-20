@@ -85,7 +85,7 @@ Middleware -> FREERTOS:
 ```
 如果遇到相同優先序的任務，則會每隔一小段時間就切換到另個任務，會使得 CPU 資源耗費許多在任務切換上，所以會盡量把優先及分開，且越高的 osDelay 時間要越短。不過若要避免這種情況發生，例如兩任務有優先順序時就可以用 Queue 隊列。
 
-## 二、[隊列 (Queue) ](https://github.com/JrPhy/DS-AL/blob/master/Stack_and_Queue/Queue-%E4%BD%87%E5%88%97.md)
+## 二、[隊列 Queue](https://github.com/JrPhy/DS-AL/blob/master/Stack_and_Queue/Queue-%E4%BD%87%E5%88%97.md)
 為一種先進先出的資料結構，FreeRTOS 中隊列與信號都是**事件**，也就是有接收到訊號時才會去執行該任務，而 osDelay 是輪詢，在固定的時間去執行，若要傳資料且資料會一筆一筆處理、或是兩個任務有順序性，如收集數據在處理數據就可以用 Queue。
 ```C
 #include "main.h"
@@ -184,7 +184,7 @@ void ControlTask(void *argument) {
 ```
 當然有多個感測器就會有更複雜的寫法，所以就可以用 Event 來告訴我們哪些成功哪些失敗。
 
-## 四、[信號量 (Semaphore) ](https://github.com/JrPhy/Multiple_Thread/blob/main/%E7%AB%B6%E7%88%AD%E6%A2%9D%E4%BB%B6%E8%88%87%E9%8E%96.md#3-%E8%99%9F%E8%AA%8C-semaphore)
+## 四、[信號量 Semaphore](https://github.com/JrPhy/Multiple_Thread/blob/main/%E7%AB%B6%E7%88%AD%E6%A2%9D%E4%BB%B6%E8%88%87%E9%8E%96.md#3-%E8%99%9F%E8%AA%8C-semaphore)
 可以看成長度為 1 的隊列，不過傳入的參數也可以 > 1。常用來等通知或喚醒設備，例如一個儀器長時間不用進入待機，當使用者按下按鈕或是有動作時要能快速喚醒。
 ```C
 #include "cmsis_os2.h"
@@ -292,3 +292,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 來源 → EventFlags
 數量 → Semaphore
 ```
+
+## 五、[互斥鎖 Mutex](https://github.com/JrPhy/Multiple_Thread/blob/main/%E7%AB%B6%E7%88%AD%E6%A2%9D%E4%BB%B6%E8%88%87%E9%8E%96.md#3-%E8%99%9F%E8%AA%8C-semaphore)
+當需要保護某變數不被其他任務改寫時就需要，在 RTOS 中還有一個目的就是**防止優先級反轉**。假設在低優先全任務中在等待資料，接收到後在去跑高優先權的任務，但此之前有個中優先權的任務一直搶資源，那就一直無法收到資料並阻塞高優先權的任務，此即為優先級反轉。
