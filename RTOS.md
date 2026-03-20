@@ -58,7 +58,7 @@ int main(void) {
     // 定義任務名稱、優先級、實例數、堆疊大小
     osThreadDef(uartTask, StartUartTask, osPriorityNormal, 0, 128);
     uartTaskHandle = osThreadCreate(osThread(uartTask), NULL);
-    // [5] 啟動內核調度器 (啟動後不再返回)
+    // 啟動內核調度器 (啟動後不再返回)
     osKernelStart();
     // 正常不會到這裡
     while (1) {}
@@ -103,7 +103,6 @@ void ControlTask(void const *argument);
 int main(void) {
     HAL_Init();
     SystemClock_Config();
-    /* 如果有 GPIO / ADC / I2C 初始化，放這裡 */
     MX_GPIO_Init();
     /* 建立 Queue（這裡才真的產生 Queue） */
     sensorQueueHandle = osMessageCreate(
@@ -185,4 +184,111 @@ void ControlTask(void *argument) {
 ```
 當然有多個感測器就會有更複雜的寫法，所以就可以用 Event 來告訴我們哪些成功哪些失敗。
 
-## 四、信號量 (Semaphore)
+## 四、[信號量 (Semaphore) ](https://github.com/JrPhy/Multiple_Thread/blob/main/%E7%AB%B6%E7%88%AD%E6%A2%9D%E4%BB%B6%E8%88%87%E9%8E%96.md#3-%E8%99%9F%E8%AA%8C-semaphore)
+可以看成長度為 1 的隊列，不過傳入的參數也可以 > 1。常用來等通知或喚醒設備，例如一個儀器長時間不用進入待機，當使用者按下按鈕或是有動作時要能快速喚醒。
+```C
+#include "cmsis_os2.h"
+
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_I2C1_Init(void);
+void Enter_Stop_Mode(void);
+
+osThreadId_t watchTaskHandle;
+osSemaphoreId_t accelSem;
+
+void WatchTask(void *argument);
+
+int main(void) {
+    HAL_Init();
+    SystemClock_Config();
+
+    MX_GPIO_Init();
+    MX_I2C1_Init();
+
+    osKernelInitialize();
+
+    const osSemaphoreAttr_t accelSem_attr = {
+        .name = "AccelWakeSem"
+    };
+    accelSem = osSemaphoreNew(1, 0, &accelSem_attr);
+    if (!accelSem) Error_Handler();
+
+    /* ===== Create Watch Task ===== */
+    const osThreadAttr_t watchTask_attr = {
+        .name = "WatchTask",
+        .priority = osPriorityNormal,
+        .stack_size = 1024
+    };
+    watchTaskHandle = osThreadNew(WatchTask, NULL, &watchTask_attr);
+    if (!watchTaskHandle) Error_Handler();
+
+    osKernelStart();
+
+    while (1) {}
+}
+void MX_FREERTOS_Init(void) {
+    const osSemaphoreAttr_t accelSem_attr = {
+        .name = "AccelWakeSem"
+    };
+
+    // Binary semaphore：最大 1，初始 0（一開始鎖住）
+    accelSem = osSemaphoreNew(1, 0, &accelSem_attr);
+    if (!accelSem) Error_Handler();}
+
+    // 建立手錶 Task
+    osThreadNew(WatchTask, NULL, &watchTask_attr);
+}
+
+void WatchTask(void *argument) {
+    for (;;) {
+        Enter_Stop_Mode();
+        /* ===== 等待加速度計喚醒 ===== */
+        if (osSemaphoreAcquire(accelSem, osWaitForever) == osOK) {
+            Accel_Clear_INT(); // 清加速度計中斷（一定要）
+            OLED_ON();
+            Update_Time();
+            osDelay(5000);
+            OLED_OFF();
+        }
+    }
+}
+
+void Enter_Stop_Mode(void) {
+    HAL_SuspendTick();
+    __HAL_PWR_CLEAR_FLAG(PWR_FLAG_WU);
+
+    HAL_PWR_EnterSTOPMode(
+        PWR_LOWPOWERREGULATOR_ON,
+        PWR_STOPENTRY_WFI
+    );
+
+    SystemClock_Config();   // STM32 必做
+    HAL_ResumeTick();
+}
+
+void Accel_Clear_INT(void) {
+    uint8_t src;
+    I2C_ReadReg(LIS3DH_INT1_SRC, &src, 1);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    if (GPIO_Pin == GPIO_PIN_1) {
+        osSemaphoreRelease(accelSem);
+    }
+}
+```
+其中的 ```osSemaphoreId_t osSemaphoreNew (uint32_t max_count, uint32_t initial_count, const osSemaphoreAttr_t *attr)``` 第一個參數就是信號數，用 1 時通常代表開關或是一個事件有沒有發生，> 1 則表示還有多少資源可用，例如資源池等。
+
+| | Semaphore | Qeueu | EventFlags  |
+| --- | :---: | :---: | :---: |
+| 適合 | 不用給資料 | 要傳資料 | 不需要資料，只要知道來源 |
+| 適合 | 單一事件發生過了嗎 | 事件有順序 | 多個事件哪個發生 |
+| 適合 | 還有幾個資源能用 | 每次發生都要被處理 |  |
+
+要使用哪個可用以下準則判斷
+```
+資料 → Queue
+來源 → EventFlags
+數量 → Semaphore
+```
