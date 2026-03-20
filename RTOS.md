@@ -295,3 +295,71 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 ## 五、[互斥鎖 Mutex](https://github.com/JrPhy/Multiple_Thread/blob/main/%E7%AB%B6%E7%88%AD%E6%A2%9D%E4%BB%B6%E8%88%87%E9%8E%96.md#3-%E8%99%9F%E8%AA%8C-semaphore)
 當需要保護某變數不被其他任務改寫時就需要，在 RTOS 中還有一個目的就是**防止優先級反轉**。假設在低優先全任務中在等待資料，接收到後在去跑高優先權的任務，但此之前有個中優先權的任務一直搶資源，那就一直無法收到資料並阻塞高優先權的任務，此即為優先級反轉。
+```C
+void LowTask(void *arg) {
+    for (;;) {
+        // 拿 UART（沒有保護）
+        printf("Low task using UART\n");
+        osDelay(50);
+    }
+}
+
+void HighTask(void *arg) {
+    for (;;) {
+        printf("High task wants UART\n");
+        osDelay(100);
+    }
+}
+
+void MediumTask(void *arg) {
+    for (;;) {
+        process(...); // takes long time
+        osDelay(5);
+    }
+}
+```
+```
+Time →
+Low     [====== resource ======] ....(被搶)
+High          [ waiting................ ]
+Medium              [ RUN ][ RUN ][ RUN ]
+```
+上方例子中因為 MediumTask 要做很長的時間，而 HighTask 要等 LowTask 任務的資料才會觸發，這樣就永遠不會跑到。所以就需要加上 mutex 來避免。
+```C
+osMutexId_t uartMutex;
+uartMutex = osMutexNew(NULL);
+
+void LowTask(void *arg) {
+    for (;;) {
+        osMutexAcquire(uartMutex, osWaitForever);
+        printf("Low task using UART\n");
+        osDelay(50);
+        osMutexRelease(uartMutex);
+        osDelay(100);
+    }
+}
+
+void HighTask(void *arg) {
+    for (;;) {
+        osMutexAcquire(uartMutex, osWaitForever);
+        printf("High task using UART\n");
+        osMutexRelease(uartMutex);
+        osDelay(100);
+    }
+}
+
+void MediumTask(void *arg) {
+    for (;;) {
+        process(...); // takes long time
+        osDelay(5);
+    }
+}
+```
+```
+Time →
+Low     [====== resource ======]
+        ↑ priority boosted
+High          [ waiting ][ RUN ]
+Medium              (被延後)
+```
+加上 mutex 並使用 ```osMutexAcquire``` 後 OS 就知道 HighTask 在等 LowTask，排程上就會讓 LowTask 執行，也要記得 ```osMutexRelease``` 釋放鎖，否則會造成死鎖 (deadlock)
