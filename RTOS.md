@@ -363,3 +363,6 @@ High          [ waiting ][ RUN ]
 Medium              (被延後)
 ```
 加上 mutex 並使用 ```osMutexAcquire``` 後 OS 就知道 HighTask 在等 LowTask，排程上就會讓 LowTask 執行，也要記得 ```osMutexRelease``` 釋放鎖，否則會造成死鎖 (deadlock)
+
+## 六、記憶體管理
+在跑 RTOS 的嵌入式系統中因為記憶體通常不大，而像車用與醫療因為安全考量，所以通常都不會另外用 malloc/free，管理方面就比較簡單。在開發時可以自己先做估算，整合時也可 ```osThreadGetStackSpace(threadId);``` 來監測，看看在**最糟情況**下記憶體還剩下多少，並且保留一些 buffer 來做未來維護與更新。
