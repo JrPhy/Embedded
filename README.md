@@ -7,3 +7,8 @@ CANBUS 沒有主從關係，為廣播模式。
 複雜度：SPI > CANBUS > I<sup>2</sup>C\
 傳輸速率：SPI > CANBUS > I<sup>2</sup>C\
 傳輸距離：CANBUS > SPI > I<sup>2</sup>C
+
+使用 STM32F429I-DISC1 和 CubeIDE 開發，專案可看 .zip 檔
+![img](Board_selector.png)
+
+![img](New_project.png)
